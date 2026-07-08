@@ -1,0 +1,15 @@
+# Build artifacts
+*.o
+*.cu.o
+aerial_coef_wmma
+aerial_bottleneck
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
