@@ -75,16 +75,58 @@ A V3 variant groups 4 subcarriers per block (4 warps) to increase occupancy. How
 
 ## Files
 
+### Coefficient Application (main contribution)
+
 | File | Description |
 |---|---|
 | `src/aerial_coef_wmma.cu` | Main benchmark: V1 scalar baseline, V2 WMMA, V3 multi-warp |
 | `src/aerial_bottleneck.cu` | Microbenchmark comparing Gram compute vs coefficient apply |
+| `src/coef_rigor.cu` | Rigor pass: latency distribution (p5/p50/p95), EVM, roofline analysis |
+| `src/coef_scaling.cu` | Deployment sweep: antenna count (8–128) and bandwidth (5–200 MHz) |
+
+### LLR Soft Demapper (case study — modest gains)
+
+| File | Description |
+|---|---|
+| `src/llr/aerial_llr_bench.cu` | V1 baseline: scalar LLR with constant-memory LUT |
+| `src/llr/aerial_llr_bench_v2.cu` | V2: LUT in registers, I/Q parallel — 1.06× (scheduler overhead) |
+| `src/llr/aerial_llr_v3.cu` | V3: FMA-folded squares, 512-thread blocks — 1.29× |
+
+### SRS Channel Estimation (candidate for future TC optimization)
+
+| File | Description |
+|---|---|
+| `src/srs/srs_wmma_bench.cu` | SRS filter multiply: V1 scalar `__hcmadd` vs V2 WMMA FP16 |
+
+### Results
+
+| File | Description |
+|---|---|
+| `results/coef_rigor_results.txt` | Rigor pass output: EVM -70.3 dB, speedup 5.54×, roofline AI=4.32 |
 
 ### Build & Run
 
 ```bash
+# Main benchmark
 nvcc -O3 -arch=sm_80 -o aerial_coef_wmma src/aerial_coef_wmma.cu
 ./aerial_coef_wmma
+
+# Rigor pass (latency distribution + EVM + roofline)
+nvcc -O3 -arch=sm_80 -std=c++17 -o coef_rigor src/coef_rigor.cu
+./coef_rigor
+
+# Scaling sweep (antenna count × bandwidth)
+nvcc -O3 -arch=sm_80 -std=c++17 -o coef_scaling src/coef_scaling.cu
+./coef_scaling
+
+# LLR benchmarks
+nvcc -O3 -arch=sm_80 --use_fast_math -o aerial_llr_bench src/llr/aerial_llr_bench.cu
+nvcc -O3 -arch=sm_80 --use_fast_math -o aerial_llr_bench_v2 src/llr/aerial_llr_bench_v2.cu
+nvcc -O3 -arch=sm_80 --use_fast_math -o aerial_llr_v3 src/llr/aerial_llr_v3.cu
+
+# SRS filter benchmark
+nvcc -O3 -arch=sm_80 -o srs_wmma_bench src/srs/srs_wmma_bench.cu
+./srs_wmma_bench
 ```
 
 ### Profiling with Nsight Compute
@@ -120,6 +162,19 @@ Performance (median over 500 alternating iterations):
   V2 TC utilization: 0.86%  |  V3 TC utilization: 0.86%
 ```
 
+### Rigor Pass (EVM + Latency Distribution)
+
+From `results/coef_rigor_results.txt`:
+
+```
+V1 scalar  mean=0.1475 sd=0.0011  p5=0.1464 p50=0.1475 p95=0.1495 ms
+V2 WMMA    mean=0.0268 sd=0.0007  p5=0.0256 p50=0.0266 p95=0.0276 ms
+speedup(median) = 5.538x   speedup(mean) = 5.497x
+EVM(V2 vs V1) = 0.0307%  (-70.3 dB)   max_rel_err = 6.4674%
+roofline: FLOPs=7.137e+07  min_bytes=1.652e+07 (C+Y+O)  AI=4.32 FLOP/byte
+achieved(V2): 2659.5 GFLOP/s  effBW(min-traffic)=615.8 GB/s
+```
+
 ### NCU Profiling Comparison
 
 | Metric | V1 Scalar | V2 WMMA |
@@ -141,6 +196,7 @@ V1 is L1-bound (94%) from shared memory coefficient cache lookups in the scalar 
 
 ## Future Work
 
+- **SRS channel estimation** (`src/srs/srs_wmma_bench.cu`): Initial benchmark of the SRS filter multiply kernel (`srsFilterMultiply`) as a WMMA FP16 candidate. Operation: `H_est[ant, sc, port] = Σ_k conj(W[sc,k]) * FOCC[port,k] * SRS[ant,k]` — a batched complex GEMM with K=12–24.
 - **Channel estimation filter** (`channel_est.cu`): Identified a second hidden GEMM `[64×96] @ [96×4]` in the frequency interpolation kernel, batched over 14 OFDM symbols and multiple UEs. WMMA FP16 optimization is viable (M=64 ≥ 16, K=96 ≥ 16, N=4 pad→16).
 - **FP16 native data path**: Eliminate FP32→FP16 conversion by leveraging Aerial's `TCompute=__half` template path.
 - **`cp.async` pipelining**: Overlap shared memory loads with computation to reduce L1 pressure (currently 55%).

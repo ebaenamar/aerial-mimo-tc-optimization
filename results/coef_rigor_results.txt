@@ -1,0 +1,7 @@
+GPU NVIDIA A100 80GB PCIe  cfg: 64ant 132RB 8L 11sym  nSC=1584
+V1 scalar  mean=0.1475 sd=0.0011  p5=0.1464 p50=0.1475 p95=0.1495 ms
+V2 WMMA    mean=0.0268 sd=0.0007  p5=0.0256 p50=0.0266 p95=0.0276 ms
+speedup(median) = 5.538x   speedup(mean) = 5.497x
+EVM(V2 vs V1) = 0.0307%  (-70.3 dB)   max_rel_err = 6.4674%
+roofline: FLOPs=7.137e+07  min_bytes=1.652e+07 (C+Y+O)  AI=4.32 FLOP/byte
+achieved(V2): 2659.5 GFLOP/s  effBW(min-traffic)=615.8 GB/s
