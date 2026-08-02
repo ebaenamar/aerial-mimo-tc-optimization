@@ -1,0 +1,145 @@
+\section{Characterization: GPU vRAN is Memory-Bound}
+\label{sec:characterization}
+
+This section presents our profiling methodology and key findings: the dominant kernel in 5G uplink equalization is memory-bound, and this is structural across all realistic configurations.
+
+\subsection{Methodology}
+
+We profile the NVIDIA Aerial cuPHY PUSCH receiver pipeline on an NVIDIA A100 80GB PCIe (108~SMs, SM 8.0, 312~TFLOP/s FP16 TC peak, 1.94~TB/s HBM2e). We use Nsight Compute (NCU) for per-kernel metrics and CUDA events for end-to-end latency. All measurements use the reference configuration: 132~PRBs (100~MHz), 12~subcarriers/PRB, 8~MIMO layers, 11~data symbols, 64~base station antennas, yielding 1,584~subcarriers. Each latency measurement is the median of 500~alternating iterations after 50~warmup runs.
+
+\subsection{Bottleneck Identification}
+
+We first identify which kernel dominates the equalization pipeline. Table~\ref{tab:bottleneck} shows the three stages of the PUSCH equalization pipeline and their measured latency.
+
+\begin{table}[h]
+\centering
+\small
+\caption{PUSCH equalization pipeline breakdown (100~MHz, 64~ant, 8~layers).}
+\label{tab:bottleneck}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Kernel & Latency & Share & AI \\
+\midrule
+Gram matrix & 0.035~ms & 19\% & 3.76 \\
+\textbf{Coef.\ apply} & \textbf{0.146~ms} & \textbf{81\%} & \textbf{4.32} \\
+LLR demap & $\sim$0.030~ms & $\sim$10\% & low \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The coefficient application kernel---which computes $Y_{\text{eq}}[\text{sc}, \ell, s] = \sum_{a} C[\text{sc}, \ell, a] \cdot Y_{\text{rx}}[\text{sc}, s, a]$ as a batched complex GEMM over 1,584 subcarriers---consumes 81\% of equalization time. Despite the LLR soft-demapper being the perceived bottleneck (due to its constant-memory LUT stalls), profiling reveals that the coefficient application is the true dominant cost.
+
+\subsection{Tensor Core Optimization and the Memory Wall}
+
+The coefficient application has an underlying GEMM structure: per subcarrier, it computes $[8 \times 64] \times [64 \times 11]$ in complex arithmetic. We replace the scalar FP32 inner loop (64 serial complex FMAs per thread) with WMMA FP16 Tensor Core operations using the standard complex decomposition into four real matrix multiplications:
+
+\begin{align}
+\text{Re}(Y_{\text{eq}}) &= \text{Re}(C) \cdot \text{Re}(Y) - \text{Im}(C) \cdot \text{Im}(Y) \nonumber \\
+\text{Im}(Y_{\text{eq}}) &= \text{Re}(C) \cdot \text{Im}(Y) + \text{Im}(C) \cdot \text{Re}(Y) \nonumber
+\end{align}
+
+Each warp processes one subcarrier: 4~k-steps $\times$ 4~real MMAs = 16~MMA calls. With 1,584 subcarriers mapped to 1,584 blocks (1~warp each), the kernel achieves full SM utilization. Table~\ref{tab:optimization} shows the results.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Coefficient application: scalar FP32 vs.\ WMMA FP16.}
+\label{tab:optimization}
+\begin{tabular}{lrr}
+\toprule
+Metric & V1 Scalar & V2 WMMA \\
+\midrule
+Latency (median) & 0.146~ms & \textbf{0.027~ms} \\
+Throughput & 487~GFLOP/s & \textbf{2,681~GFLOP/s} \\
+Speedup & 1.0$\times$ & \textbf{5.5$\times$} \\
+TC utilization & 0.02\% & 0.86\% \\
+L1 throughput & 93.6\% & 55.0\% \\
+DRAM throughput & 4.4\% & 21.2\% \\
+Warps active & 57.2\% & 13.6\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The 5.5$\times$ speedup is significant, but the resulting 2,681~GFLOP/s is only 0.86\% of the 312~TFLOP/s Tensor Core peak. The kernel is still memory-bound: the FP32$\rightarrow$FP16 conversion in shared memory creates L1 pressure (55.0\%), and the global memory traffic for coefficient and received-signal arrays drives DRAM to 21.2\%. A V3 variant grouping 4~subcarriers per block (4~warps) to increase occupancy matches V2 performance exactly (0.027~ms)---adding warps does not relieve the memory bandwidth pressure.
+
+\subsection{Latency Distribution and Correctness}
+
+Table~\ref{tab:rigor} shows the latency distribution over 500~iterations and the numerical accuracy of the WMMA optimization.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Latency distribution (500~iters) and accuracy.}
+\label{tab:rigor}
+\begin{tabular}{lrrrr}
+\toprule
+Variant & p5 (ms) & p50 (ms) & p95 (ms) & $\sigma$ \\
+\midrule
+V1 scalar & 0.1464 & 0.1475 & 0.1495 & 0.0011 \\
+V2 WMMA & 0.0256 & 0.0266 & 0.0276 & 0.0007 \\
+\bottomrule
+\end{tabular}
+\vspace{4pt}
+
+\begin{tabular}{lr}
+EVM (V2 vs V1) & 0.031\% ($-$70.3~dB) \\
+Cosine similarity & 0.99999997 \\
+Max relative error & 6.47\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The tight latency distribution ($\sigma$ = 0.7~$\mu$s for V2) confirms deterministic execution, which is critical for real-time scheduling. The EVM of $-$70.3~dB far exceeds the 3GPP requirement of $-$20~dB for 64-QAM~\cite{3gpp_38104}, confirming that FP16 Tensor Core precision is sufficient for production equalization.
+
+\subsection{Scaling: The Memory-Bound Regime is Structural}
+
+To verify that the memory-bound regime is not an artifact of one configuration, we sweep three dimensions: antenna count, channel bandwidth, and symbol count.
+
+\textbf{Antenna scaling} (8--64~antennas, 100~MHz): As antenna count increases, the GEMM's K dimension grows, increasing both FLOPs and bytes. The arithmetic intensity remains constant at $\sim$4.3~FLOP/byte because both FLOPs and bytes scale linearly with antenna count. The kernel remains memory-bound across all antenna configurations.
+
+\textbf{Bandwidth scaling} (5--200~MHz, 64~antennas): Bandwidth scales the number of subcarriers (the batch dimension of the GEMM). This increases total work but does not change per-subcarrier arithmetic intensity. At 200~MHz (264~PRB), the kernel processes 3,168~subcarriers and latency scales linearly, confirming that the bottleneck is per-subcarrier memory traffic, not SM saturation.
+
+\textbf{Symbol scaling} (1--14~symbols, 64~antennas): The symbol count scales the N dimension of the B matrix. At nSym=1 (single-symbol burst), the WMMA padding overhead is largest (11$\rightarrow$16), but the kernel is still memory-bound because the coefficient matrix C dominates memory traffic and is independent of nSym.
+
+\begin{figure}[h]
+\centering
+\begin{subfigure}{0.48\columnwidth}
+\centering
+\fbox{\parbox[c][3cm][c]{0.95\linewidth}{\centering \small Antenna scaling \\ (8--64 ant, 100~MHz)}}
+\caption{Antenna count}
+\end{subfigure}
+\begin{subfigure}{0.48\columnwidth}
+\centering
+\fbox{\parbox[c][3cm][c]{0.95\linewidth}{\centering \small BW scaling \\ (5--200~MHz, 64~ant)}}
+\caption{Bandwidth}
+\end{subfigure}
+\caption{Scaling behavior of the coefficient application kernel. Arithmetic intensity remains $\sim$4.3~FLOP/byte across all configurations, confirming the memory-bound regime is structural.}
+\label{fig:scaling}
+\end{figure}
+
+\subsection{Roofline Analysis}
+
+Table~\ref{tab:roofline} summarizes the Roofline inputs for the reference configuration.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Roofline analysis of coefficient application (V2 WMMA).}
+\label{tab:roofline}
+\begin{tabular}{lr}
+\toprule
+Parameter & Value \\
+\midrule
+Total FLOPs & $7.14 \times 10^7$ \\
+Min bytes (C+Y+O) & $1.65 \times 10^7$ \\
+Arithmetic intensity & 4.32~FLOP/byte \\
+A100 FP16 TC peak & 312~TFLOP/s \\
+A100 HBM bandwidth & 1.94~TB/s \\
+Ridge point & 161~FLOP/byte \\
+Achieved throughput & 2,660~GFLOP/s \\
+Effective bandwidth & 616~GB/s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At AI=4.32, the kernel sits well below the Ridge point of 161~FLOP/byte. The achieved 616~GB/s effective bandwidth is 32\% of HBM peak, indicating that the kernel is limited by L1/L2 cache behavior and shared memory bank conflicts, not raw HBM bandwidth. This distinction matters for multi-cell scheduling: L1 contention is per-SM and can be partially mitigated by distributing cells across SMs, while L2 and HBM contention is global and affects all concurrent cells regardless of SM assignment.

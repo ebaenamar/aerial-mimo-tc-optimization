@@ -1,0 +1,43 @@
+\documentclass[letterpaper,twocolumn,10pt]{article}
+\usepackage{usenix}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{hyperref}
+\usepackage{subcaption}
+
+\begin{document}
+
+%don't want date printed
+\date{}
+
+%make title bold and 14 pt font (Latex default is non-bold, 16 pt)
+\title{\Large \bf L2-Aware Pipeline Scheduling for Memory-Bound Multi-Cell GPU vRAN}
+
+%for single author (just remove % characters)
+\author{
+{\rm Anonymous}\\
+NSDI '26 Submission
+} % end author
+
+\maketitle
+
+\input{sections/abstract}
+\input{sections/intro}
+\input{sections/background}
+\input{sections/characterization}
+\input{sections/motivation}
+\input{sections/design}
+\input{sections/implementation}
+\input{sections/evaluation}
+\input{sections/related}
+\input{sections/conclusion}
+
+{\footnotesize \bibliographystyle{acm}
+\bibliography{refs}}
+
+\end{document}

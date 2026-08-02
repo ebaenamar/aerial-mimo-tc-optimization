@@ -1,0 +1,18 @@
+\section{Background}
+\label{sec:background}
+
+\subsection{5G NR Uplink PHY Processing}
+
+A 5G NR base station processes uplink signals through a pipeline of physical-layer functions. For PUSCH (Physical Uplink Shared Channel), the receiver pipeline includes: (1)~FFT to convert time-domain samples to frequency-domain resource elements, (2)~channel estimation from SRS (Sounding Reference Signal), (3)~MMSE equalization combining channel estimates with received data, and (4)~soft-demapping to produce log-likelihood ratios (LLRs) for the channel decoder.
+
+The strict real-time constraint comes from the 5G NR slot structure. At 120~kHz subcarrier spacing (SCS), a slot spans 0.5~ms. The entire uplink pipeline---FFT, channel estimation, equalization, demapping, and decoding---must complete within this budget, with margin for downlink processing and fronthaul transport. Equalization alone is budgeted at most 100--200~$\mu$s.
+
+\subsection{GPU-Accelerated vRAN}
+
+NVIDIA Aerial~\cite{nvidia_aerial} implements the 5G PHY stack in CUDA, targeting data-center GPUs. The cuPHY library provides CUDA kernels for each pipeline stage. In production, a single GPU (e.g., A100, L40S) serves multiple cells concurrently: each cell's pipeline is dispatched as a sequence of CUDA kernels on separate CUDA streams, and the GPU's hardware scheduler interleaves execution across SMs.
+
+This multi-cell consolidation is the economic driver for GPU vRAN. A single A100 has 108~SMs and 312~TFLOP/s of FP16 Tensor Core throughput---far exceeding one cell's compute demand. The implicit assumption is that compute headroom translates directly into cell capacity: if one cell uses 10\% of compute, ten cells should fit.
+
+\subsection{GPU Memory Hierarchy and the Roofline Model}
+
+An A100 GPU has a memory hierarchy consisting of: (1)~per-SM shared memory/L1 cache (192~KB/SM, 20.7~TB/s aggregate), (2)~L2 cache (40~MB, 5~TB/s), and (3)~HBM2e DRAM (80~GB, 1.94~TB/s). The Roofline model~\cite{roofline} relates achievable performance to arithmetic intensity (AI = FLOPs/byte): a kernel is memory-bound if its AI is below the GPU's Ridge point (AI$_{\text{ridge}}$ = peak FLOP/s $\div$ peak bandwidth). For FP16 Tensor Cores on A100, AI$_{\text{ridge}}$ = 312~TFLOP/s $\div$ 1.94~TB/s $\approx$ 161~FLOP/byte. Kernels with AI well below this value are memory-bound: their performance is limited by how fast data can be moved, not how fast compute can execute.

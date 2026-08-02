@@ -1,0 +1,211 @@
+\section{Evaluation}
+\label{sec:evaluation}
+
+\subsection{Experimental Setup}
+
+\textbf{Hardware.} NVIDIA A100 80GB PCIe (108~SMs, 312~TFLOP/s FP16 TC, 1.94~TB/s HBM2e, 42~MB L2 cache), AMD EPYC server, 256~GB DDR4.
+
+\textbf{Software.} CUDA 12.9, Nsight Compute 2025.2, \texttt{nvcc -O3 -arch=sm\_80 -std=c++17}.
+
+\textbf{Workloads.} 1--8 concurrent cells, reference config: 132~PRB (100~MHz), 64~antennas, 8~MIMO layers, 11~data symbols. Heterogeneous configs: 5--200~MHz cells with 11--264~PRB.
+
+\textbf{Methodology.} Each measurement is p50 over 300--500~iterations after 50~warmup. Per-cell latency measured via CUDA events on separate streams. All cells use independent buffers to avoid artificial sharing.
+
+\subsection{Single-Cell Characterization}
+
+Table~\ref{tab:eval_single} reproduces the key single-cell metrics from \S\ref{sec:characterization} for reference.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Single-cell coefficient application performance.}
+\label{tab:eval_single}
+\begin{tabular}{lrr}
+\toprule
+Metric & V1 Scalar & V2 WMMA \\
+\midrule
+Latency (p50, 500~iters) & 0.1475~ms & 0.0266~ms \\
+Throughput & 487~GFLOP/s & 2,681~GFLOP/s \\
+Speedup & 1.0$\times$ & 5.5$\times$ \\
+TC utilization (NCU) & 0.02\% & 0.86\% \\
+L1 throughput (NCU) & 93.6\% & 55.0\% \\
+DRAM throughput (NCU) & 4.4\% & 21.2\% \\
+EVM & --- & $-$70.3~dB \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Multi-Cell Contention (Experiment 1)}
+
+Table~\ref{tab:eval_contention} shows per-cell latency degradation as N~concurrent cells share the GPU via separate CUDA streams.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Per-cell latency under N-cell concurrent execution.}
+\label{tab:eval_contention}
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+N & p50 (ms) & Degrade & Total (ms) & Throughput \\
+\midrule
+1 & 0.0266 & 1.00$\times$ & 0.034 & 29.4K cells/s \\
+2 & 0.0502 & 1.89$\times$ & 0.056 & 35.7K \\
+4 & 0.0645 & 2.43$\times$ & 0.094 & 42.6K \\
+8 & 0.1055 & 3.97$\times$ & 0.171 & 46.8K \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Throughput increases sublinearly (29.4K$\rightarrow$46.8K cells/s) while per-cell latency degrades superlinearly (1.00$\times$$\rightarrow$3.97$\times$). The L2~cache overflow at N=3 (49.6~MB $>$ 42~MB L2) marks the inflection point.
+
+\subsection{Heterogeneous Cell Contention (Experiment 3)}
+
+Table~\ref{tab:eval_hetero} shows that pairing large with small cells reduces degradation when the combined working set fits in L2.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Heterogeneous pair contention.}
+\label{tab:eval_hetero}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Pair & WS total & Degrade \\
+\midrule
+100MHz + 100MHz & 33.0~MB & 1.52$\times$ \\
+100MHz + 20MHz & 23.0~MB & 1.32$\times$ \\
+100MHz + 5MHz & 17.9~MB & 1.12$\times$ \\
+20MHz + 20MHz & 13.0~MB & 1.50$\times$ \\
+5MHz + 5MHz & 2.8~MB & 1.18$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Pipeline Stage Overlap (Experiment 4)}
+
+Table~\ref{tab:eval_pipeline} shows that cross-stage overlap with small-first ordering significantly reduces contention compared to same-stage overlap.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Stage overlap: same-stage vs.\ cross-stage (small-first).}
+\label{tab:eval_pipeline}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Combo & Degrade & Improvement \\
+\midrule
+Coef + Coef (same) & 1.50$\times$ & --- \\
+Gram + Coef (small-first) & 1.16$\times$ & 23\% \\
+LLR + Coef (small-first) & 1.07$\times$ & 29\% \\
+LLR + Gram (small-first) & 1.03$\times$ & 35\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Full 2-cell staggered pipeline: 0.158~ms vs.\ 0.172~ms synchronized (8\% improvement).
+
+\subsection{Online Contention Prediction (Experiment 5)}
+
+Table~\ref{tab:eval_online} validates that 5~runtime samples predict steady-state degradation with $<$3\% error.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Online prediction accuracy.}
+\label{tab:eval_online}
+\begin{tabular}{@{}rrrr@{}}
+\toprule
+N & Actual degr. & Predicted & Error \\
+\midrule
+2 & 2.64$\times$ & 2.62$\times$ & 0.8\% \\
+4 & 4.52$\times$ & 4.64$\times$ & 2.7\% \\
+8 & 8.20$\times$ & 8.17$\times$ & 0.4\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Scheduling Strategy Comparison (Experiment 6)}
+
+Table~\ref{tab:eval_strategies} compares five strategies at N=4 and N=8.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Scheduling strategy comparison.}
+\label{tab:eval_strategies}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+ & \multicolumn{2}{c}{N=4} & \multicolumn{2}{c}{N=8} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Strategy & Per-cell & Total & Per-cell & Total \\
+\midrule
+Unrestricted & 0.114~ms & 0.093 & 0.205~ms & 0.168 \\
+Serial & 0.034~ms & 0.181 & 0.034~ms & 0.343 \\
+Stream priority & 0.118~ms & 0.094 & 0.204~ms & 0.171 \\
+Batched (batch=2) & 0.042~ms & 0.132 & 0.043~ms & 0.262 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Batched serial (batch=2)} achieves the best latency--throughput tradeoff: 1.58$\times$ per-cell degradation (vs.\ 4.27$\times$ unrestricted at N=4) with 1.37$\times$ serial throughput.
+
+\subsection{Contention Function}
+
+Table~\ref{tab:eval_bw} shows the measured aggregate bandwidth and efficiency $\delta$.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Effective aggregate bandwidth vs.\ N.}
+\label{tab:eval_bw}
+\begin{tabular}{@{}rrrr@{}}
+\toprule
+N & Agg.\ BW (GB/s) & \% HBM & $\delta$ \\
+\midrule
+1 & 451 & 23\% & 0.73 \\
+2 & 621 & 32\% & 0.50 \\
+4 & 698 & 36\% & 0.28 \\
+8 & 776 & 40\% & 0.16 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Aggregate BW saturates at $\sim$780~GB/s (40\% of HBM peak). The efficiency $\delta \approx C/N$ where $C \approx 780$~GB/s provides the scheduler's predictive model.
+
+\subsection{Deadline Compliance}
+
+The 5G NR slot deadline at 120~kHz SCS is 0.5~ms. For the coefficient application kernel alone, 8~cells concurrent (0.171~ms) meet the deadline. The full pipeline (Gram + Coef + LLR, $\sim$1.2$\times$) at 8~cells would be $\sim$0.205~ms, still within budget. However, with channel estimation, LDPC decoding, and fronthaul transport, the real budget for equalization is $\sim$0.25~ms. Under this tighter budget:
+
+\begin{itemize}[leftmargin=*,nosep]
+\item \textbf{Unrestricted at N=8}: 0.205~ms $\times$ 1.2 = 0.246~ms --- borderline.
+\item \textbf{Batched (batch=2) at N=8}: 0.262~ms $\times$ 1.2 = 0.314~ms --- exceeds 0.25~ms half-slot.
+\item \textbf{Batched (batch=2) at N=4}: 0.132~ms $\times$ 1.2 = 0.158~ms --- comfortable.
+\end{itemize}
+
+The scheduler's adaptive batch sizing would detect the N=8 overload via the online predictor and reduce to batch=4 or reject excess cells, maintaining deadline compliance.
+
+\subsection{Projected Scheduler Benefits}
+
+Based on the measured data, we project the scheduler's performance relative to baselines:
+
+\begin{table}[h]
+\centering
+\small
+\caption{Projected scheduler performance at N=4 (full pipeline).}
+\label{tab:projected}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Approach & Per-cell (ms) & Total (ms) & Deadline? \\
+\midrule
+Stream-RR (unrestricted) & 0.137 & 0.113 & Yes \\
+Serial & 0.041 & 0.217 & Yes \\
+Batched serial (batch=2) & 0.050 & 0.158 & Yes \\
+\textbf{Scheduler (L2+stage+adaptive)} & \textbf{0.044} & \textbf{0.135} & \textbf{Yes} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The projected scheduler combines L2-aware batching (batch=2), stage ordering (small-first), and online adaptation. The per-cell latency (0.044~ms) is close to serial (0.041~ms) while the total time (0.135~ms) approaches unrestricted (0.113~ms). These projections are based on measured component benefits and will be validated with the full scheduler implementation.
+
+\subsection{Reproducibility}
+
+All experiment code, raw results, and the A100 profiling data are available in the repository. The six CUDA files compile and run on any A100 with CUDA 12.x. Results are deterministic (fixed seeds, median of 300+~iterations).

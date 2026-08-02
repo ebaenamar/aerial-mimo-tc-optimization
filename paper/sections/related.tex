@@ -1,0 +1,12 @@
+\section{Related Work}
+\label{sec:related}
+
+\textbf{GPU-accelerated RAN.} NVIDIA Aerial~\cite{nvidia_aerial} provides a production CUDA-accelerated 5G PHY stack. MegaStation~\cite{megastation} builds a massive MIMO baseband processing system on a single GPU node, achieving real-time processing for 128~antennas. Both systems focus on single-cell performance optimization and do not address multi-cell memory contention. Our work complements these by providing the scheduling layer that enables multi-cell consolidation.
+
+\textbf{GPU resource management for vRAN.} YinYangRAN~\cite{yinyangran} proposes resource multiplexing for GPU-accelerated virtualized RANs, using SM partitioning to isolate 5G and ML workloads. However, SM partitioning does not address memory bandwidth contention, as we show in Experiment~6: stream priority (a proxy for SM partitioning) provides no benefit over unrestricted concurrent execution. Our work identifies L2~cache capacity---not SM count---as the binding constraint and proposes L2-aware scheduling.
+
+\textbf{GPU scheduling for ML.} MPS~\cite{nvidia_mps} provides SM-level isolation for concurrent CUDA processes but does not partition L2~cache or HBM bandwidth. REEF~\cite{reef} and Orion~\cite{orion} propose GPU scheduling for real-time DNN inference workloads. These systems optimize for compute-bound or large-model workloads where working sets far exceed cache capacity, making HBM the sole bottleneck. Our work addresses a fundamentally different regime: vRAN kernels have working sets (16.5~MB) that \emph{fit} in L2~cache for small N, creating a two-regime contention model (L2-fitting vs.\ L2-overflow) that existing schedulers do not capture. Additionally, vRAN's pipeline structure (Gram$\rightarrow$Coef$\rightarrow$LLR) enables stage-aware co-scheduling, a feature absent in DNN serving.
+
+\textbf{Roofline analysis.} The Roofline model~\cite{roofline} relates arithmetic intensity to achievable throughput. We use it to characterize the memory-bound regime of vRAN kernels and to show that Tensor Core optimization moves the bottleneck from L1 to DRAM without eliminating the memory wall.
+
+\textbf{5G PHY optimization.} Prior work on 5G PHY optimization focuses on algorithmic improvements (e.g., reduced-complexity equalizers) or FPGA acceleration. Our work is orthogonal: we optimize the \emph{scheduling} of existing GPU-accelerated PHY kernels, not the kernels themselves. The experimental evidence (Experiments~1--6) provides the first systematic characterization of multi-cell memory contention in GPU vRAN.

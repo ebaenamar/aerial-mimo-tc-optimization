@@ -1,0 +1,148 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{nvidia_aerial}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\newlabel{sec:intro}{{1}{1}{Introduction}{section.1}{}}
+\citation{nvidia_aerial}
+\citation{roofline}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Background}{2}{section.2}\protected@file@percent }
+\newlabel{sec:background}{{2}{2}{Background}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}5G NR Uplink PHY Processing}{2}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}GPU-Accelerated vRAN}{2}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}GPU Memory Hierarchy and the Roofline Model}{2}{subsection.2.3}\protected@file@percent }
+\citation{3gpp_38104}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Characterization: GPU vRAN is Memory-Bound}{3}{section.3}\protected@file@percent }
+\newlabel{sec:characterization}{{3}{3}{Characterization: GPU vRAN is Memory-Bound}{section.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Methodology}{3}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Bottleneck Identification}{3}{subsection.3.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces PUSCH equalization pipeline breakdown (100~MHz, 64~ant, 8~layers).}}{3}{table.caption.1}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{tab:bottleneck}{{1}{3}{PUSCH equalization pipeline breakdown (100~MHz, 64~ant, 8~layers)}{table.caption.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Tensor Core Optimization and the Memory Wall}{3}{subsection.3.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Coefficient application: scalar FP32 vs.\ WMMA FP16.}}{3}{table.caption.2}\protected@file@percent }
+\newlabel{tab:optimization}{{2}{3}{Coefficient application: scalar FP32 vs.\ WMMA FP16}{table.caption.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Latency Distribution and Correctness}{3}{subsection.3.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Latency distribution (500~iters) and accuracy.}}{3}{table.caption.3}\protected@file@percent }
+\newlabel{tab:rigor}{{3}{3}{Latency distribution (500~iters) and accuracy}{table.caption.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}Scaling: The Memory-Bound Regime is Structural}{4}{subsection.3.5}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Scaling behavior of the coefficient application kernel. Arithmetic intensity remains $\sim $4.3~FLOP/byte across all configurations, confirming the memory-bound regime is structural.}}{4}{figure.caption.4}\protected@file@percent }
+\newlabel{fig:scaling}{{1}{4}{Scaling behavior of the coefficient application kernel. Arithmetic intensity remains $\sim $4.3~FLOP/byte across all configurations, confirming the memory-bound regime is structural}{figure.caption.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.6}Roofline Analysis}{4}{subsection.3.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Roofline analysis of coefficient application (V2 WMMA).}}{4}{table.caption.5}\protected@file@percent }
+\newlabel{tab:roofline}{{4}{4}{Roofline analysis of coefficient application (V2 WMMA)}{table.caption.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Motivation: Multi-Cell Memory Contention}{4}{section.4}\protected@file@percent }
+\newlabel{sec:motivation}{{4}{4}{Motivation: Multi-Cell Memory Contention}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Experimental Setup}{4}{subsection.4.1}\protected@file@percent }
+\newlabel{sec:setup}{{4.1}{4}{Experimental Setup}{subsection.4.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Experiment 1: N-Cell Contention}{4}{subsection.4.2}\protected@file@percent }
+\newlabel{sec:exp1}{{4.2}{4}{Experiment 1: N-Cell Contention}{subsection.4.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Per-cell latency under concurrent execution (V2 WMMA, 100~MHz).}}{5}{table.caption.6}\protected@file@percent }
+\newlabel{tab:contention}{{5}{5}{Per-cell latency under concurrent execution (V2 WMMA, 100~MHz)}{table.caption.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Experiment 2: Mixed-Kernel Co-Scheduling}{5}{subsection.4.3}\protected@file@percent }
+\newlabel{sec:exp2}{{4.3}{5}{Experiment 2: Mixed-Kernel Co-Scheduling}{subsection.4.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces V2 WMMA p50 latency under different co-schedules.}}{5}{table.caption.7}\protected@file@percent }
+\newlabel{tab:mixed}{{6}{5}{V2 WMMA p50 latency under different co-schedules}{table.caption.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Experiment 3: Heterogeneous Cell Sizes}{5}{subsection.4.4}\protected@file@percent }
+\newlabel{sec:exp3}{{4.4}{5}{Experiment 3: Heterogeneous Cell Sizes}{subsection.4.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Heterogeneous cell pair contention (degradation of cell~0).}}{5}{table.caption.8}\protected@file@percent }
+\newlabel{tab:hetero}{{7}{5}{Heterogeneous cell pair contention (degradation of cell~0)}{table.caption.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Experiment 4: Pipeline-Aware Stage Overlap}{5}{subsection.4.5}\protected@file@percent }
+\newlabel{sec:exp4}{{4.5}{5}{Experiment 4: Pipeline-Aware Stage Overlap}{subsection.4.5}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces 2-cell stage overlap: same-stage vs.\ cross-stage degradation.}}{6}{table.caption.9}\protected@file@percent }
+\newlabel{tab:pipeline}{{8}{6}{2-cell stage overlap: same-stage vs.\ cross-stage degradation}{table.caption.9}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}Experiment 5: Online Contention Prediction}{6}{subsection.4.6}\protected@file@percent }
+\newlabel{sec:exp5}{{4.6}{6}{Experiment 5: Online Contention Prediction}{subsection.4.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces Online contention prediction: first 5 iterations vs.\ actual.}}{6}{table.caption.10}\protected@file@percent }
+\newlabel{tab:online}{{9}{6}{Online contention prediction: first 5 iterations vs.\ actual}{table.caption.10}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.7}Experiment 6: Scheduling Strategies}{6}{subsection.4.7}\protected@file@percent }
+\newlabel{sec:exp6}{{4.7}{6}{Experiment 6: Scheduling Strategies}{subsection.4.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces Scheduling strategy comparison at N=4 and N=8.}}{6}{table.caption.11}\protected@file@percent }
+\newlabel{tab:strategies}{{10}{6}{Scheduling strategy comparison at N=4 and N=8}{table.caption.11}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.8}The Contention Function}{6}{subsection.4.8}\protected@file@percent }
+\newlabel{sec:contention_fn}{{4.8}{6}{The Contention Function}{subsection.4.8}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {11}{\ignorespaces Effective aggregate bandwidth vs.\ N (contention function $\delta $).}}{6}{table.caption.12}\protected@file@percent }
+\newlabel{tab:bw_fn}{{11}{6}{Effective aggregate bandwidth vs.\ N (contention function $\delta $)}{table.caption.12}{}}
+\citation{yinyangran}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.9}Why Existing Approaches Fail}{7}{subsection.4.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Scheduler Design}{7}{section.5}\protected@file@percent }
+\newlabel{sec:design}{{5}{7}{Scheduler Design}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Design Principles}{7}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Calibrated Contention Model}{7}{subsection.5.2}\protected@file@percent }
+\newlabel{sec:model}{{5.2}{7}{Calibrated Contention Model}{subsection.5.2}{}}
+\newlabel{eq:delta}{{1}{7}{Calibrated Contention Model}{equation.1}{}}
+\newlabel{eq:latency_pred}{{2}{7}{Calibrated Contention Model}{equation.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Component 1: L2-Aware Stage Co-Scheduling}{7}{subsection.5.3}\protected@file@percent }
+\newlabel{sec:cosched}{{5.3}{7}{Component 1: L2-Aware Stage Co-Scheduling}{subsection.5.3}{}}
+\newlabel{eq:l2_constraint}{{3}{7}{Component 1: L2-Aware Stage Co-Scheduling}{equation.3}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.3.1}Heterogeneous Batch Construction}{8}{subsubsection.5.3.1}\protected@file@percent }
+\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces L2-aware stage co-scheduling}}{8}{algorithm.1}\protected@file@percent }
+\newlabel{alg:cosched}{{1}{8}{L2-aware stage co-scheduling}{algorithm.1}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.3.2}Pipeline Dependency Handling}{8}{subsubsection.5.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Component 2: Online Contention Prediction}{8}{subsection.5.4}\protected@file@percent }
+\newlabel{sec:online}{{5.4}{8}{Component 2: Online Contention Prediction}{subsection.5.4}{}}
+\newlabel{eq:online_delta}{{4}{8}{Component 2: Online Contention Prediction}{equation.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Component 3: Adaptive Batch Sizing}{8}{subsection.5.5}\protected@file@percent }
+\newlabel{sec:adaptive}{{5.5}{8}{Component 3: Adaptive Batch Sizing}{subsection.5.5}{}}
+\@writefile{loa}{\contentsline {algorithm}{\numberline {2}{\ignorespaces Adaptive batch sizing}}{8}{algorithm.2}\protected@file@percent }
+\newlabel{alg:adaptive}{{2}{8}{Adaptive batch sizing}{algorithm.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}Deadline Guarantees}{8}{subsection.5.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.7}What Distinguishes This Scheduler}{9}{subsection.5.7}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {12}{\ignorespaces Comparison with existing GPU scheduling approaches.}}{9}{table.caption.13}\protected@file@percent }
+\newlabel{tab:novelty}{{12}{9}{Comparison with existing GPU scheduling approaches}{table.caption.13}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Implementation Status and Plan}{9}{section.6}\protected@file@percent }
+\newlabel{sec:implementation}{{6}{9}{Implementation Status and Plan}{section.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Current Prototype}{9}{subsection.6.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Development Roadmap}{9}{subsection.6.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7}Evaluation}{9}{section.7}\protected@file@percent }
+\newlabel{sec:evaluation}{{7}{9}{Evaluation}{section.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Experimental Setup}{9}{subsection.7.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Single-Cell Characterization}{10}{subsection.7.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {13}{\ignorespaces Single-cell coefficient application performance.}}{10}{table.caption.14}\protected@file@percent }
+\newlabel{tab:eval_single}{{13}{10}{Single-cell coefficient application performance}{table.caption.14}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}Multi-Cell Contention (Experiment 1)}{10}{subsection.7.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {14}{\ignorespaces Per-cell latency under N-cell concurrent execution.}}{10}{table.caption.15}\protected@file@percent }
+\newlabel{tab:eval_contention}{{14}{10}{Per-cell latency under N-cell concurrent execution}{table.caption.15}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}Heterogeneous Cell Contention (Experiment 3)}{10}{subsection.7.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {15}{\ignorespaces Heterogeneous pair contention.}}{10}{table.caption.16}\protected@file@percent }
+\newlabel{tab:eval_hetero}{{15}{10}{Heterogeneous pair contention}{table.caption.16}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.5}Pipeline Stage Overlap (Experiment 4)}{10}{subsection.7.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {16}{\ignorespaces Stage overlap: same-stage vs.\ cross-stage (small-first).}}{10}{table.caption.17}\protected@file@percent }
+\newlabel{tab:eval_pipeline}{{16}{10}{Stage overlap: same-stage vs.\ cross-stage (small-first)}{table.caption.17}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.6}Online Contention Prediction (Experiment 5)}{10}{subsection.7.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {17}{\ignorespaces Online prediction accuracy.}}{10}{table.caption.18}\protected@file@percent }
+\newlabel{tab:eval_online}{{17}{10}{Online prediction accuracy}{table.caption.18}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.7}Scheduling Strategy Comparison (Experiment 6)}{10}{subsection.7.7}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {18}{\ignorespaces Scheduling strategy comparison.}}{10}{table.caption.19}\protected@file@percent }
+\newlabel{tab:eval_strategies}{{18}{10}{Scheduling strategy comparison}{table.caption.19}{}}
+\citation{nvidia_aerial}
+\citation{megastation}
+\citation{yinyangran}
+\citation{nvidia_mps}
+\citation{reef}
+\citation{orion}
+\citation{roofline}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.8}Contention Function}{11}{subsection.7.8}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {19}{\ignorespaces Effective aggregate bandwidth vs.\ N.}}{11}{table.caption.20}\protected@file@percent }
+\newlabel{tab:eval_bw}{{19}{11}{Effective aggregate bandwidth vs.\ N}{table.caption.20}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.9}Deadline Compliance}{11}{subsection.7.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.10}Projected Scheduler Benefits}{11}{subsection.7.10}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {20}{\ignorespaces Projected scheduler performance at N=4 (full pipeline).}}{11}{table.caption.21}\protected@file@percent }
+\newlabel{tab:projected}{{20}{11}{Projected scheduler performance at N=4 (full pipeline)}{table.caption.21}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.11}Reproducibility}{11}{subsection.7.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8}Related Work}{11}{section.8}\protected@file@percent }
+\newlabel{sec:related}{{8}{11}{Related Work}{section.8}{}}
+\bibstyle{acm}
+\bibdata{refs}
+\bibcite{3gpp_38104}{1}
+\bibcite{orion}{2}
+\bibcite{yinyangran}{3}
+\bibcite{reef}{4}
+\bibcite{nvidia_mps}{5}
+\bibcite{nvidia_aerial}{6}
+\bibcite{roofline}{7}
+\bibcite{megastation}{8}
+\@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion}{12}{section.9}\protected@file@percent }
+\newlabel{sec:conclusion}{{9}{12}{Conclusion}{section.9}{}}
+\gdef \@abspage@last{12}

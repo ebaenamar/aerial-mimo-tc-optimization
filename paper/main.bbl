@@ -1,0 +1,49 @@
+\begin{thebibliography}{1}
+
+\bibitem{3gpp_38104}
+{\sc 3GPP}.
+\newblock Ts 38.104: Nr; base station (bs) radio transmission and reception,
+  2023.
+
+\bibitem{orion}
+{\sc Chu, e.~a.}
+\newblock Orion: Interference-aware gpu scheduling for deep learning
+  applications.
+\newblock In {\em USENIX OSDI\/} (2023).
+
+\bibitem{yinyangran}
+{\sc Europe, N.~L.}
+\newblock Yinyangran: Resource multiplexing in gpu-accelerated virtualized
+  rans.
+\newblock Pre-print, 2024.
+
+\bibitem{reef}
+{\sc Han, e.~a.}
+\newblock Reef: Retaining deep learning frameworks responsive.
+\newblock In {\em USENIX OSDI\/} (2022).
+
+\bibitem{nvidia_mps}
+{\sc NVIDIA}.
+\newblock Cuda multi-process service.
+\newblock \url{https://docs.nvidia.com/deploy/mps/}, 2024.
+
+\bibitem{nvidia_aerial}
+{\sc NVIDIA}.
+\newblock cuphy developer guide --- aerial cuda-accelerated ran.
+\newblock
+  \url{https://docs.nvidia.com/aerial/cuda-accelerated-ran/latest/cubb/cuphy_developer_guide/index.html},
+  2024.
+
+\bibitem{roofline}
+{\sc Williams, S., Waterman, A., and Patterson, D.}
+\newblock Roofline: An insightful visual performance model for multicore
+  architectures.
+\newblock In {\em Communications of the ACM\/} (2009).
+
+\bibitem{megastation}
+{\sc Xie, e.~a.}
+\newblock Megastation: Building massive mimo baseband processing on a
+  single-node supercomputer.
+\newblock In {\em USENIX NSDI\/} (2025).
+
+\end{thebibliography}

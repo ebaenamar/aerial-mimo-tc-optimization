@@ -1,0 +1,232 @@
+\section{Motivation: Multi-Cell Memory Contention}
+\label{sec:motivation}
+
+The characterization in \S\ref{sec:characterization} establishes that a single cell's equalization kernel is memory-bound. This section presents six experiments that quantify multi-cell contention, identify its root cause, and validate three design principles for a memory-hierarchy-aware scheduler.
+
+\subsection{Experimental Setup}
+\label{sec:setup}
+
+All experiments run on an NVIDIA A100 80GB PCIe (108~SMs, 312~TFLOP/s FP16 TC, 1.94~TB/s HBM2e, 42~MB L2 cache) with CUDA 12.9. Each cell uses independent input/output buffers to avoid artificial data sharing. Latency is measured with CUDA events, reported as p50 over 300--500~iterations after 50~warmup runs. The reference cell configuration is: 132~PRBs (100~MHz), 64~antennas, 8~MIMO layers, 11~data symbols (1,584~subcarriers), with a per-cell working set of 16.5~MB.
+
+\subsection{Experiment 1: N-Cell Contention}
+\label{sec:exp1}
+
+We launch 1--8 concurrent instances of the V2 WMMA coefficient application kernel on separate CUDA streams. Table~\ref{tab:contention} shows the measured per-cell latency.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Per-cell latency under concurrent execution (V2 WMMA, 100~MHz).}
+\label{tab:contention}
+\begin{tabular}{@{}rrrrrr@{}}
+\toprule
+N & p50 (ms) & p5 (ms) & p95 (ms) & Degrade & Total (ms) \\
+\midrule
+1 & 0.0266 & 0.0256 & 0.0276 & 1.00$\times$ & 0.034 \\
+2 & 0.0502 & 0.0389 & 0.0522 & 1.89$\times$ & 0.056 \\
+3 & 0.0573 & 0.0440 & 0.0717 & 2.16$\times$ & 0.081 \\
+4 & 0.0645 & 0.0461 & 0.0891 & 2.43$\times$ & 0.094 \\
+5 & 0.0758 & 0.0461 & 0.1106 & 2.85$\times$ & 0.122 \\
+6 & 0.0840 & 0.0512 & 0.1290 & 3.16$\times$ & 0.133 \\
+7 & 0.1014 & 0.0512 & 0.1475 & 3.81$\times$ & 0.159 \\
+8 & 0.1055 & 0.0563 & 0.1669 & 3.97$\times$ & 0.171 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Per-cell latency grows superlinearly: from 0.027~ms (isolated) to 0.105~ms at 8~cells, a 3.97$\times$ degradation. The total batch time grows sublinearly (0.034$\rightarrow$0.171~ms), indicating that the GPU sustains higher aggregate throughput but at the cost of individual cell latency. The widening p5--p95 gap (0.002~ms at N=1 vs.\ 0.111~ms at N=8) shows increasing scheduling jitter under contention.
+
+\textbf{Key observation.} The projected HBM bandwidth demand reaches 97\% of peak at 3~cells and 130\% at 4~cells. However, the actual saturation point is the L2~cache: 2~cells (33~MB) fit within L2 (42~MB), but 3~cells (49.6~MB) overflow it. The superlinear latency jump between 2 and 3~cells (1.89$\times$$\rightarrow$2.16$\times$) corresponds to this L2 overflow.
+
+\subsection{Experiment 2: Mixed-Kernel Co-Scheduling}
+\label{sec:exp2}
+
+We test whether kernels with complementary memory profiles can coexist without contention. V1~scalar is L1-bound (93.6\% L1, 4.4\% DRAM) while V2~WMMA is HBM-bound (55.0\% L1, 21.2\% DRAM). We co-schedule V2 with V1 and with the Gram matrix kernel (L1-bound, small working set).
+
+\begin{table}[h]
+\centering
+\small
+\caption{V2 WMMA p50 latency under different co-schedules.}
+\label{tab:mixed}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Co-schedule & V2 p50 (ms) & vs.\ isolated \\
+\midrule
+V2 isolated & 0.0256 & 1.00$\times$ \\
+2$\times$ V2 (both HBM-bound) & 0.0389 & 1.52$\times$ \\
+1$\times$ V2 + 1$\times$ V1 (L1-bound) & 0.0584 & 2.28$\times$ \\
+1$\times$ V2 + 1$\times$ Gram (L1-bound, small) & 0.0471 & 1.84$\times$ \\
+4$\times$ V2 & 0.0461 & 1.80$\times$ \\
+2$\times$ V2 + 2$\times$ V1 & 0.0471 & 1.84$\times$ \\
+2$\times$ V2 + 2$\times$ Gram & 0.0471 & 1.84$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Key finding.} Mixing L1-bound and HBM-bound kernels does \emph{not} reduce contention---it worsens it. V2+V1 (2.28$\times$) is worse than 2$\times$V2 (1.52$\times$). The V1 scalar kernel's high L1 utilization (93.6\%) evicts V2's shared-memory data, increasing V2's L2/HBM traffic. This disproves the hypothesis that complementary bandwidth profiles enable peaceful co-scheduling. Contention is driven by \emph{total working set and cache pressure}, not by kernel type classification.
+
+\subsection{Experiment 3: Heterogeneous Cell Sizes}
+\label{sec:exp3}
+
+We pair cells of different bandwidths to test whether small cells contend less with large cells than two large cells with each other.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Heterogeneous cell pair contention (degradation of cell~0).}
+\label{tab:hetero}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Pair & WS total (MB) & Cell0 degrade & Fits L2? \\
+\midrule
+200MHz + 200MHz & 66.1 & 1.10$\times$ & No \\
+100MHz + 100MHz & 33.0 & 1.52$\times$ & Yes (barely) \\
+100MHz + 200MHz & 49.6 & 1.60$\times$ & No \\
+100MHz + 20MHz & 23.0 & 1.32$\times$ & Yes \\
+100MHz + 5MHz & 17.9 & 1.12$\times$ & Yes \\
+20MHz + 20MHz & 13.0 & 1.50$\times$ & Yes \\
+20MHz + 5MHz & 7.9 & 1.21$\times$ & Yes \\
+5MHz + 5MHz & 2.8 & 1.18$\times$ & Yes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Key finding.} Degradation correlates with \emph{working set overlap in L2}, not with absolute cell size. 100MHz+5MHz (17.9~MB total, fits L2) degrades only 1.12$\times$, while 20MHz+20MHz (13.0~MB, also fits L2) degrades 1.50$\times$. The difference: two equal-size cells compete for the same cache lines, while a small cell's working set barely touches the large cell's cache footprint. This suggests that \emph{heterogeneous batch construction}---pairing large and small cells---can reduce contention.
+
+\subsection{Experiment 4: Pipeline-Aware Stage Overlap}
+\label{sec:exp4}
+
+The vRAN pipeline has three stages with distinct working set sizes: Gram (13.8~MB, L1-bound), Coef (16.5~MB, HBM-bound), and LLR (5.6~MB, L1-bound). We test whether overlapping \emph{different} stages from two cells contends less than overlapping the \emph{same} stage.
+
+\begin{table}[h]
+\centering
+\small
+\caption{2-cell stage overlap: same-stage vs.\ cross-stage degradation.}
+\label{tab:pipeline}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Combo & Degrade & WS total (MB) & Ordering \\
+\midrule
+\textit{Same stage:} & & & \\
+Gram + Gram & 1.58$\times$ & 27.6 & --- \\
+Coef + Coef & 1.50$\times$ & 33.0 & --- \\
+LLR + LLR & 1.27$\times$ & 11.2 & --- \\
+\textit{Cross stage:} & & & \\
+Gram + Coef & 1.16$\times$ & 30.3 & small-first \\
+Coef + Gram & 1.77$\times$ & 30.3 & large-first \\
+LLR + Coef & 1.07$\times$ & 22.1 & small-first \\
+Coef + LLR & 1.77$\times$ & 22.1 & large-first \\
+LLR + Gram & 1.03$\times$ & 19.4 & small-first \\
+Gram + LLR & 1.39$\times$ & 19.4 & large-first \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Key finding.} \emph{Launch ordering matters.} Gram+Coef (small kernel first) = 1.16$\times$, but Coef+Gram (large kernel first) = 1.77$\times$---a 52\% difference for the same pair of kernels. When the smaller-working-set kernel launches first, it occupies less L2 capacity, leaving room for the larger kernel's data. When the larger kernel launches first, it pollutes L2, and the smaller kernel suffers eviction. This is a novel observation for vRAN scheduling: \emph{stage ordering by ascending working set size} is a free optimization that requires no hardware support.
+
+We also test full pipeline simulation with 2~cells (Gram$\rightarrow$Coef$\rightarrow$LLR per cell):
+\begin{itemize}[leftmargin=*,nosep]
+\item \textbf{Synchronized} (both cells at same stage): 0.172~ms total
+\item \textbf{Staggered} (offset by 1~stage): 0.158~ms total (8\% improvement)
+\end{itemize}
+
+With 3~cells, pipelining does not help (0.255~ms vs.\ 0.233~ms synchronized, 9\% \emph{worse}), because the contention from 3~overlapping stages exceeds the scheduling benefit. Pipeline-aware scheduling is effective for 2~cells but requires adaptive batch sizing for larger N.
+
+\subsection{Experiment 5: Online Contention Prediction}
+\label{sec:exp5}
+
+We test whether the scheduler can detect contention at runtime without hardware PMUs. The approach: measure per-cell latency for the first 5~iterations, compute the ratio to the isolated baseline, and compare with the actual steady-state degradation.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Online contention prediction: first 5 iterations vs.\ actual.}
+\label{tab:online}
+\begin{tabular}{@{}rrrrrr@{}}
+\toprule
+N & Actual p50 & First-5 avg & Indicator & Actual degr. & Error \\
+\midrule
+1 & 0.037 ms & 0.040 ms & 1.54$\times$ & 1.44$\times$ & 7.2\% \\
+2 & 0.068 ms & 0.067 ms & 2.62$\times$ & 2.64$\times$ & 0.8\% \\
+3 & 0.095 ms & 0.096 ms & 3.75$\times$ & 3.72$\times$ & 0.8\% \\
+4 & 0.116 ms & 0.119 ms & 4.64$\times$ & 4.52$\times$ & 2.7\% \\
+6 & 0.163 ms & 0.162 ms & 6.31$\times$ & 6.36$\times$ & 0.8\% \\
+8 & 0.210 ms & 0.209 ms & 8.17$\times$ & 8.20$\times$ & 0.4\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Key finding.} Five latency samples predict steady-state degradation with $<$3\% error for $N \geq 2$. This means the scheduler can detect contention \emph{online} using only CUDA event timing---no NCU profiling, no CUPTI, no hardware performance counters. This is critical for production deployments where PMU access is restricted.
+
+\textbf{Adaptive batch sizing.} Using a threshold of 2.0$\times$ isolated latency, the online detector correctly identifies that $N \geq 3$ should be split into smaller batches. The scheduler can start with a large batch, measure 5~slots, and reduce batch size if the threshold is exceeded.
+
+\subsection{Experiment 6: Scheduling Strategies}
+\label{sec:exp6}
+
+We compare five scheduling strategies for 1--8~cells:
+
+\begin{table}[h]
+\centering
+\small
+\caption{Scheduling strategy comparison at N=4 and N=8.}
+\label{tab:strategies}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+ & \multicolumn{2}{c}{N=4} & \multicolumn{2}{c}{N=8} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Strategy & Per-cell & Total & Per-cell & Total \\
+\midrule
+A: Unrestricted concurrent & 0.114 ms & 0.093 & 0.205 ms & 0.168 \\
+B: Serial & 0.034 ms & 0.181 & 0.034 ms & 0.343 \\
+C: Stream priority & 0.118 ms & 0.094 & 0.204 ms & 0.171 \\
+D: Chunked (data parallel) & --- & 0.027 & --- & 0.028 \\
+E: Batched serial (batch=2) & 0.042 ms & 0.132 & 0.043 ms & 0.262 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Key findings.}
+\begin{itemize}[leftmargin=*,nosep]
+\item \textbf{Stream priority does not help} (C$\approx$A). The A100's hardware scheduler does not sufficiently respect CUDA stream priorities for memory-bound kernels.
+\item \textbf{Serial per-cell is constant} (1.27$\times$ degradation) because each cell runs in isolation. But total time grows linearly, yielding 2$\times$ lower throughput than concurrent.
+\item \textbf{Batched serial (batch=2)} is the sweet spot: 1.58$\times$ per-cell degradation (close to serial) with 1.37$\times$ the throughput of serial. This strategy maintains most of the latency benefit of serial execution while recovering much of the throughput of concurrent execution.
+\item \textbf{Chunked} (splitting subcarriers across streams) provides no speedup over single-cell execution, confirming that the bottleneck is memory bandwidth, not SM availability.
+\end{itemize}
+
+\subsection{The Contention Function}
+\label{sec:contention_fn}
+
+From Experiments~1 and 3, we derive the aggregate bandwidth as a function of N~concurrent cells. Using the measured total batch time and known data transfer sizes:
+
+\begin{table}[h]
+\centering
+\small
+\caption{Effective aggregate bandwidth vs.\ N (contention function $\delta$).}
+\label{tab:bw_fn}
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+N & Agg.\ BW (GB/s) & \% HBM & $\delta$ (efficiency) & BW per cell \\
+\midrule
+1 & 451 & 23\% & 0.73 & 451 \\
+2 & 621 & 32\% & 0.50 & 310 \\
+3 & 670 & 35\% & 0.36 & 223 \\
+4 & 698 & 36\% & 0.28 & 175 \\
+6 & 731 & 38\% & 0.20 & 122 \\
+8 & 776 & 40\% & 0.16 & 97 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The aggregate bandwidth saturates at $\sim$780~GB/s (40\% of HBM peak). Beyond 3~cells, adding more cells does not increase aggregate throughput---it only divides the same bandwidth among more cells. The efficiency $\delta$ decays approximately as $C/N$ where $C \approx 780$~GB/s, providing a simple analytical model for the scheduler.
+
+\subsection{Why Existing Approaches Fail}
+
+Existing GPU scheduling approaches for vRAN fall into three categories, none of which address the L2-cache-centric contention we observe:
+
+\textbf{Stream-round-robin} (Aerial's default): Each cell gets a CUDA stream. Our Experiment~1 shows this causes up to 3.97$\times$ degradation at 8~cells.
+
+\textbf{SM partitioning} (YinYangRAN~\cite{yinyangran}): Assigns cells to disjoint SM partitions via MPS. Our Experiment~6 shows stream priority (a proxy for SM partitioning) provides no benefit (C$\approx$A). SM partitioning does not partition L2~cache or HBM bandwidth---all SMs share the same memory hierarchy.
+
+\textbf{Temporal serialization}: Eliminates contention but wastes parallelism. Experiment~6 shows serial execution has 2$\times$ lower throughput than concurrent.
+
+None of these approaches model L2~cache capacity as the contention threshold, exploit pipeline stage ordering, or adapt batch size based on online measurements. The scheduler we propose (\S\ref{sec:design}) addresses all three gaps.

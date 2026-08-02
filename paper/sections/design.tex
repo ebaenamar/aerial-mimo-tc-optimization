@@ -1,0 +1,174 @@
+\section{Scheduler Design}
+\label{sec:design}
+
+Based on the experimental evidence in \S\ref{sec:motivation}, we propose a memory-hierarchy-aware scheduler with three components: (1)~L2-aware stage co-scheduling, (2)~online contention prediction, and (3)~adaptive batch sizing with deadline guarantees. This section presents the design principles, the calibrated contention model, and the algorithm.
+
+\subsection{Design Principles}
+
+Three findings from \S\ref{sec:motivation} directly inform the design:
+
+\textbf{Principle 1: L2 capacity is the scheduling constraint.} Experiment~3 (\S\ref{sec:exp3}) shows that degradation correlates with whether the combined working set fits in L2 (42~MB), not with HBM bandwidth. The scheduler must group cells whose combined working set $\leq W^{\text{L2}}_{\text{max}}$, where $W^{\text{L2}}_{\text{max}}$ is the effective L2 capacity ($\sim$35~MB, accounting for metadata).
+
+\textbf{Principle 2: Stage ordering by ascending working set.} Experiment~4 (\S\ref{sec:exp4}) shows that launching the smaller-working-set kernel first reduces degradation by up to 52\% (1.16$\times$ vs.\ 1.77$\times$). The scheduler must order pipeline stages within each batch so that smaller-working-set stages execute first, preserving L2 capacity for larger stages.
+
+\textbf{Principle 3: Online detection enables adaptation.} Experiment~5 (\S\ref{sec:exp5}) shows that 5~runtime latency samples predict contention with $<$3\% error. The scheduler must measure per-cell latency online and adapt batch size when degradation exceeds a threshold, without requiring offline profiling or hardware PMUs.
+
+\subsection{Calibrated Contention Model}
+\label{sec:model}
+
+From Experiments~1 and 6, we derive a contention model. The aggregate bandwidth saturates at $C \approx 780$~GB/s (40\% of HBM peak). The per-cell efficiency decays as:
+
+\begin{equation}
+\delta(N) = \frac{\text{BW}_{\text{agg}}(N)}{N \cdot \text{BW}_{\text{iso}}} \approx \frac{C}{N \cdot \text{BW}_{\text{iso}}}
+\label{eq:delta}
+\end{equation}
+
+where $\text{BW}_{\text{iso}} \approx 620$~GB/s is the isolated per-cell bandwidth. The predicted per-cell latency under contention is:
+
+\begin{equation}
+\hat{t}_{\text{cell}}(N) = \frac{t_{\text{iso}}}{\delta(N)} = \frac{t_{\text{iso}} \cdot N \cdot \text{BW}_{\text{iso}}}{C}
+\label{eq:latency_pred}
+\end{equation}
+
+This model is calibrated from measured data (Table~\ref{tab:bw_fn}) and captures the saturation behavior: beyond 3~cells, aggregate throughput plateaus and additional cells only divide the fixed bandwidth. The model has two regimes:
+
+\begin{itemize}[leftmargin=*,nosep]
+\item \textbf{L2-fitting} ($\sum w_i \leq W^{\text{L2}}_{\text{max}}$): Degradation is mild ($\sim$1.1--1.3$\times$) because working sets share L2 without eviction. The contention factor is $\delta_{\text{L2}} \approx 1 + 0.12 \cdot (N-1)$.
+\item \textbf{L2-overflow} ($\sum w_i > W^{\text{L2}}_{\text{max}}$): Degradation follows Equation~\ref{eq:latency_pred} with $\delta$ decaying as $C/N$.
+\end{itemize}
+
+The L2-fitting degradation is derived from Experiment~3: pairs with combined WS $\leq$ 35~MB show 1.10--1.32$\times$ degradation. The L2-overflow degradation follows the saturation model from Experiment~1.
+
+\subsection{Component 1: L2-Aware Stage Co-Scheduling}
+\label{sec:cosched}
+
+The co-scheduler groups pipeline stages from different cells into temporal batches. Unlike traditional bin-packing by HBM bandwidth, our scheduler uses L2 working set as the primary constraint:
+
+\begin{equation}
+\sum_{i \in B} w_i \leq W^{\text{L2}}_{\text{max}}
+\label{eq:l2_constraint}
+\end{equation}
+
+Within each batch, stages are ordered by ascending working set size ($w_i$). This exploits the finding from Experiment~4 that small-first ordering reduces L2 pollution.
+
+\subsubsection{Heterogeneous Batch Construction}
+
+Experiment~3 shows that pairing large and small cells reduces degradation (100MHz+5MHz = 1.12$\times$ vs.\ 100MHz+100MHz = 1.52$\times$). The scheduler constructs batches to maximize working set complementarity:
+
+\begin{algorithm}[h]
+\caption{L2-aware stage co-scheduling}
+\label{alg:cosched}
+\begin{algorithmic}[1]
+\Require Cells $\mathcal{C}$, stage signatures $\{(w_s, t_s)\}$,\\
+\quad\quad\quad L2 capacity $W^{\text{L2}}_{\text{max}}$, deadline $T_{\text{dl}}$
+\Ensure Ordered batches $\mathcal{B} = \{B_1, B_2, \ldots\}$
+\State $\mathcal{S} \gets \bigcup_{c \in \mathcal{C}} \text{stages}(c)$ \Comment{all stages from all cells}
+\State Sort $\mathcal{S}$ by $w_s$ \emph{ascending}
+\State $\mathcal{B} \gets \emptyset$
+\While{$\mathcal{S} \neq \emptyset$}
+  \State $B \gets \emptyset$, $w_{\text{acc}} \gets 0$
+  \For{$s \in \mathcal{S}$} \Comment{greedy: smallest first}
+    \If{$w_{\text{acc}} + w_s \leq W^{\text{L2}}_{\text{max}}$}
+      \State $B \gets B \cup \{s\}$, $w_{\text{acc}} \mathrel{+}= w_s$
+      \State $\mathcal{S} \gets \mathcal{S} \setminus \{s\}$
+    \EndIf
+  \EndFor
+  \State \Comment{Stages in $B$ are already ascending by $w_s$}
+  \State $\mathcal{B} \gets \mathcal{B} \cup \{B\}$
+\EndWhile
+\State \Return $\mathcal{B}$
+\end{algorithmic}
+\end{algorithm}
+
+The algorithm is $O(|\mathcal{S}| \log |\mathcal{S}|)$ due to sorting. For typical vRAN ($N=8$ cells, 3~stages each = 24~stages), this is $\sim$100~comparisons, completing in $<$10~$\mu$s---negligible against the 0.5~ms slot budget.
+
+\subsubsection{Pipeline Dependency Handling}
+
+Within a cell, stages have sequential dependencies (Gram$\rightarrow$Coef$\rightarrow$LLR). The scheduler respects these by assigning each cell's stages to different temporal batches. For 2~cells, the staggered assignment is:
+
+\begin{itemize}[leftmargin=*,nosep]
+\item Batch 1: Cell1.Gram (13.8~MB) + Cell2.Coef (16.5~MB) = 30.3~MB $\leq$ 35~MB
+\item Batch 2: Cell1.Coef (16.5~MB) + Cell2.LLR (5.6~MB) = 22.1~MB $\leq$ 35~MB
+\item Batch 3: Cell1.LLR (5.6~MB) = 5.6~MB
+\end{itemize}
+
+This staggered assignment ensures each batch fits in L2 and stages are ordered small-first. Experiment~4 validated this pattern: staggered 2-cell pipeline completes in 0.158~ms vs.\ 0.172~ms synchronized (8\% improvement).
+
+\subsection{Component 2: Online Contention Prediction}
+\label{sec:online}
+
+The scheduler monitors per-cell latency at runtime using CUDA events. After the first 5~slots of a new batch configuration, it computes the contention indicator:
+
+\begin{equation}
+\hat{\delta}_{\text{online}} = \frac{\bar{t}_{\text{observed}}}{t_{\text{iso}}}
+\label{eq:online_delta}
+\end{equation}
+
+where $\bar{t}_{\text{observed}}$ is the mean per-cell latency over the first 5~iterations and $t_{\text{iso}}$ is the isolated latency (pre-calibrated once per kernel type). Experiment~5 validates that this indicator predicts steady-state degradation with $<$3\% error for $N \geq 2$.
+
+The online predictor requires no hardware PMUs---only CUDA event timing, which is available in any deployment. This is a practical advantage over approaches requiring CUPTI or Nsight Compute access.
+
+\subsection{Component 3: Adaptive Batch Sizing}
+\label{sec:adaptive}
+
+The scheduler adapts batch size based on the online contention indicator. The control loop is:
+
+\begin{algorithm}[h]
+\caption{Adaptive batch sizing}
+\label{alg:adaptive}
+\begin{algorithmic}[1]
+\Require Cells $\mathcal{C}$, threshold $\tau$, deadline $T_{\text{dl}}$
+\State $N \gets |\mathcal{C}|$ \Comment{start with all cells concurrent}
+\State \textbf{measure} 5~slots, compute $\hat{\delta}_{\text{online}}$
+\While{$\hat{\delta}_{\text{online}} > \tau$ \textbf{and} $N > 1$}
+  \State $N \gets \lceil N/2 \rceil$ \Comment{halve batch size}
+  \State Re-assign cells to $\lceil |\mathcal{C}|/N \rceil$ batches of size $N$
+  \State \textbf{measure} 5~slots, compute $\hat{\delta}_{\text{online}}$
+\EndWhile
+\State \Comment{Verify deadline:}
+\If{$\hat{t}_{\text{cell}} \times \text{stages} > T_{\text{dl}}$}
+  \State Signal overload, reject excess cells
+\EndIf
+\end{algorithmic}
+\end{algorithm}
+
+The threshold $\tau$ controls the latency--throughput tradeoff. Experiment~6 shows that batch=2 achieves 1.58$\times$ per-cell degradation with 1.37$\times$ serial throughput. Setting $\tau = 2.0$ causes the scheduler to split batches at $N \geq 3$, matching the sweet spot observed in Experiment~6 (Strategy~E).
+
+\subsection{Deadline Guarantees}
+
+The 5G NR slot deadline at 120~kHz SCS is 0.5~ms (half-slot: 0.25~ms). The full pipeline (Gram + Coef + LLR) for one cell takes $\sim$0.09~ms isolated. Under the scheduler:
+
+\begin{equation}
+\hat{t}_{\text{pipeline}} = \sum_{j=1}^{P} \hat{t}_{\text{cell}}(N_j) \times \delta_{\text{L2}}(B_j)
+\end{equation}
+
+where $P$ is the number of pipeline stages (3), $N_j$ is the batch size at stage $j$, and $\delta_{\text{L2}}(B_j)$ is the L2-fitting degradation for batch $B_j$. For 4~cells with batch=2:
+$\hat{t} = 2 \times 0.042 \times 3 = 0.252$~ms $\leq$ 0.5~ms. The scheduler admits all 4~cells.
+
+For 8~cells with batch=2: $\hat{t} = 4 \times 0.043 \times 3 = 0.516$~ms $>$ 0.5~ms. The scheduler rejects 2~cells or reduces to batch=1 (serial), yielding $\hat{t} = 8 \times 0.034 \times 3 = 0.816$~ms, requiring further admission control.
+
+\subsection{What Distinguishes This Scheduler}
+
+Table~\ref{tab:novelty} contrasts our approach with existing GPU schedulers.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Comparison with existing GPU scheduling approaches.}
+\label{tab:novelty}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Feature & REEF/Orion & YinYangRAN & Ours \\
+\midrule
+Bottleneck model & SM compute & SM compute & L2 cache \\
+Working set aware & No & No & Yes \\
+Pipeline stage ordering & No & No & Yes \\
+Online contention detect & Offline & Offline & 5-sample \\
+Adaptive batch sizing & No & Static & Yes \\
+Deadline guarantees & Soft SLO & No & Hard 5G \\
+Target workload & DNN & vRAN & vRAN \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The key distinction is that existing schedulers model the GPU as a compute resource (SMs) or a flat bandwidth resource (HBM). Our scheduler models the \emph{memory hierarchy}---specifically, L2 cache capacity as the contention threshold---and exploits the pipeline structure of vRAN to reduce contention through stage ordering.

@@ -1,0 +1,31 @@
+\section{Implementation Status and Plan}
+\label{sec:implementation}
+
+\subsection{Current Prototype}
+
+The experimental kernels and benchmark harness are implemented in CUDA C++ and compiled with \texttt{nvcc -O3 -arch=sm\_80 -std=c++17}. The repository contains six experiment files, each self-contained:
+
+\begin{itemize}[leftmargin=*,nosep]
+\item \texttt{multicell\_contention.cu}: N-cell concurrent V2 WMMA, per-cell latency measurement (Exp.~1).
+\item \texttt{multicell\_mixed.cu}: Mixed V1/V2/Gram co-scheduling with scenario matrix (Exp.~2).
+\item \texttt{multicell\_evidence.cu}: Serial vs.\ concurrent, heterogeneous sizes, BW function, deadline analysis (Exp.~3).
+\item \texttt{pipeline\_overlap.cu}: 3-stage pipeline (Gram/Coef/LLR), same-stage vs.\ cross-stage overlap, full staggered pipeline simulation (Exp.~4).
+\item \texttt{pmu\_contention.cu}: Online contention detection from timing, adaptive batch sizing simulation, runtime BW estimation (Exp.~5).
+\item \texttt{adaptive\_smpartition.cu}: 5 scheduling strategies---unrestricted, serial, stream priority, chunked, batched serial (Exp.~6).
+\end{itemize}
+
+All kernels replicate the Aerial cuPHY PUSCH equalization structure: coefficient application as batched complex GEMM over subcarriers, Gram matrix as per-SC outer product, and LLR as max-log soft demapping. The V2~WMMA kernel uses \texttt{wmma::mma\_sync} for FP16 Tensor Core operations with the standard 4-multiply complex decomposition.
+
+\subsection{Development Roadmap}
+
+The full scheduler implementation requires the following phases:
+
+\textbf{Phase 1: Scheduler prototype (4--6 weeks).} Implement the three components (Algorithms~1--2) as a C++ library. Input: N~cells with configs. Output: batch assignments and stage ordering. Evaluate against baselines (unrestricted, serial, batch=2) using the existing kernel harness. Metrics: per-cell latency, throughput, deadline compliance.
+
+\textbf{Phase 2: Integration with Aerial cuPHY (6--8 weeks).} Replace synthetic kernels with real cuPHY calls. Use Aerial's cuPHY library for PUSCH processing with 3GPP-compliant configurations. Alternative: srsRAN with GPU backend if Aerial licensing is unavailable.
+
+\textbf{Phase 3: Multi-cell deployment (4--6 weeks).} Deploy 4--8~cells with srsRAN or OAI gNB sharing one GPU. Use CUDA MPS for SM partitioning experiments. Measure end-to-end: UDP/TCP throughput, BLER, slot-level latency.
+
+\textbf{Phase 4: Baseline comparison (2--3 weeks).} Compare against REEF, Orion (if reproducible), MPS static partitioning, and round-robin streams. Measure under homogeneous and heterogeneous workloads.
+
+\textbf{Phase 5: Paper finalization (3--4 weeks).} Total estimated time: 19--27~weeks (5--7~months).
